@@ -6,7 +6,8 @@ import {
   ButtonBuilder,
   ButtonStyle,
   PermissionFlagsBits,
-  ChannelType
+  ChannelType,
+  TextChannel
 } from 'discord.js';
 import { Command } from '../../interfaces/Command';
 
@@ -34,6 +35,9 @@ const command: Command = {
       });
       return;
     }
+    
+    // Type assertion to ensure we have a TextChannel
+    const textChannel = targetChannel as TextChannel;
     
     try {
       // Create the main ticket embed
@@ -69,7 +73,7 @@ const command: Command = {
         );
       
       // Send the embed to the target channel
-      const sentMessage = await targetChannel.send({
+      const sentMessage = await textChannel.send({
         embeds: [ticketEmbed],
         components: [ticketButton]
       });
@@ -82,7 +86,7 @@ const command: Command = {
       }
       
       await interaction.reply({
-        content: `✅ Ticket creation embed has been set up in ${targetChannel}!`,
+        content: `✅ Ticket creation embed has been set up in ${textChannel}!`,
         ephemeral: true
       });
       
