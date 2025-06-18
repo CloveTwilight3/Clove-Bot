@@ -1,7 +1,6 @@
 services:
-  clove:
+  clove-bot:
     build: .
-    container_name: bot
     restart: unless-stopped
     env_file:
       - .env
