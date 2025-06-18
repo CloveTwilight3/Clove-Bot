@@ -1,3 +1,4 @@
+// src/deploy-commands.ts
 import { REST, Routes } from 'discord.js';
 import { config } from 'dotenv';
 import { loadCommands } from './handlers/commandHandler';
@@ -20,12 +21,26 @@ async function deployCommands() {
 
     const rest = new REST().setToken(process.env.DISCORD_TOKEN!);
 
-    const data = await rest.put(
-      Routes.applicationCommands(process.env.CLIENT_ID!),
-      { body: commandData }
-    ) as any[];
+    let data: any[];
+    
+    if (process.env.GUILD_ID) {
+      // Deploy to specific guild (fast)
+      logger.info(`📍 Deploying to guild: ${process.env.GUILD_ID}`);
+      data = await rest.put(
+        Routes.applicationGuildCommands(process.env.CLIENT_ID!, process.env.GUILD_ID),
+        { body: commandData }
+      ) as any[];
+      logger.info(`✅ Successfully reloaded ${data.length} guild commands.`);
+    } else {
+      // Deploy globally (slow)
+      logger.info('🌍 Deploying globally (this may take up to 1 hour to propagate)');
+      data = await rest.put(
+        Routes.applicationCommands(process.env.CLIENT_ID!),
+        { body: commandData }
+      ) as any[];
+      logger.info(`✅ Successfully reloaded ${data.length} global commands.`);
+    }
 
-    logger.info(`✅ Successfully reloaded ${data.length} application (/) commands.`);
   } catch (error) {
     logger.error(`❌ Error deploying commands: ${error}`);
   }

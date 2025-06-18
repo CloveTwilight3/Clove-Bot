@@ -3,15 +3,21 @@ FROM node:18-alpine
 # Create app directory
 WORKDIR /usr/src/app
 
-# Install app dependencies
+# Install app dependencies (including dev dependencies for building)
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci
 
 # Copy app source
 COPY . .
 
 # Build TypeScript
 RUN npm run build
+
+# Deploy commands to Discord
+RUN npm run deploy-commands:prod
+
+# Remove dev dependencies after building
+RUN npm prune --production
 
 # Create non-root user
 RUN addgroup -g 1001 -S nodejs

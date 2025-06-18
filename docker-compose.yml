@@ -1,7 +1,7 @@
 services:
-  clove-bot:
+  clove:
     build: .
-    container_name: clove
+    container_name: bot
     restart: unless-stopped
     env_file:
       - .env
@@ -9,6 +9,7 @@ services:
       - NODE_ENV=production
     volumes:
       - ./logs:/usr/src/app/logs
+      - ./data:/usr/src/app/data  # Add this line for persistent ticket data
     networks:
       - clove-network
     deploy:
@@ -24,3 +25,4 @@ networks:
 
 volumes:
   logs:
+  data:  # Add this volume

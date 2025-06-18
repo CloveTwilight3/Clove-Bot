@@ -1,3 +1,4 @@
+// src/handlers/eventHandler.ts
 import { Client } from 'discord.js';
 import { readdirSync } from 'fs';
 import { join } from 'path';
@@ -6,7 +7,7 @@ import { logger } from '../utils/logger';
 export const loadEvents = (client: Client): void => {
   const eventsPath = join(__dirname, '../events');
   const eventFiles = readdirSync(eventsPath).filter(file => 
-    file.endsWith('.js') && !file.endsWith('.d.ts')
+    (file.endsWith('.js') || file.endsWith('.ts')) && !file.endsWith('.d.ts')
   );
 
   for (const file of eventFiles) {

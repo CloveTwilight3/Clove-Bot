@@ -1,3 +1,4 @@
+// src/handlers/commandHandler.ts
 import { Collection } from 'discord.js';
 import { readdirSync } from 'fs';
 import { join } from 'path';
@@ -16,8 +17,11 @@ export const loadCommands = async (): Promise<Collection<string, Command>> => {
       
       if (file.isDirectory()) {
         await loadCommandsFromDir(filePath);
-      } else if (file.name.endsWith('.js') && !file.name.endsWith('.d.ts')) {
-        // Only load .js files, not .d.ts files
+      } else if (
+        (file.name.endsWith('.js') || file.name.endsWith('.ts')) && 
+        !file.name.endsWith('.d.ts')
+      ) {
+        // Load both .js and .ts files, but not .d.ts files
         try {
           const command: Command = require(filePath).default;
           

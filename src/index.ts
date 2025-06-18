@@ -1,3 +1,4 @@
+// src/index.ts
 import { Client, GatewayIntentBits, Collection } from 'discord.js';
 import { config } from 'dotenv';
 import { validateEnv } from './utils/validateEnv';
@@ -5,6 +6,7 @@ import { logger } from './utils/logger';
 import { loadCommands } from './handlers/commandHandler';
 import { loadEvents } from './handlers/eventHandler';
 import { Command } from './interfaces/Command';
+import { REST, Routes } from 'discord.js';
 
 // Load environment variables
 config();
@@ -27,6 +29,40 @@ const client = new Client({
 // Initialize commands collection
 client.commands = new Collection();
 
+// Deploy commands function
+async function deployCommands(commands: Collection<string, Command>) {
+  try {
+    logger.info('🔄 Started refreshing application (/) commands.');
+
+    const commandData = commands.map((command: Command) => command.data.toJSON());
+    const rest = new REST().setToken(process.env.DISCORD_TOKEN!);
+
+    let data: any[];
+    
+    if (process.env.GUILD_ID) {
+      // Deploy to specific guild (fast)
+      logger.info(`📍 Deploying to guild: ${process.env.GUILD_ID}`);
+      data = await rest.put(
+        Routes.applicationGuildCommands(process.env.CLIENT_ID!, process.env.GUILD_ID),
+        { body: commandData }
+      ) as any[];
+      logger.info(`✅ Successfully reloaded ${data.length} guild commands.`);
+    } else {
+      // Deploy globally (slow)
+      logger.info('🌍 Deploying globally (this may take up to 1 hour to propagate)');
+      data = await rest.put(
+        Routes.applicationCommands(process.env.CLIENT_ID!),
+        { body: commandData }
+      ) as any[];
+      logger.info(`✅ Successfully reloaded ${data.length} global commands.`);
+    }
+
+  } catch (error) {
+    logger.error(`❌ Error deploying commands: ${error}`);
+    throw error;
+  }
+}
+
 // Initialize bot
 async function initializeBot() {
   try {
@@ -34,6 +70,9 @@ async function initializeBot() {
     
     // Load commands
     client.commands = await loadCommands();
+    
+    // Deploy commands to Discord
+    await deployCommands(client.commands);
     
     // Load events
     loadEvents(client);
