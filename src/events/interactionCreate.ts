@@ -9,7 +9,8 @@ import {
   ButtonStyle,
   PermissionFlagsBits,
   ThreadChannel,
-  ChannelType
+  ChannelType,
+  MessageFlags
 } from 'discord.js';
 import { Command } from '../interfaces/Command';
 import { logger } from '../utils/logger';
@@ -60,7 +61,7 @@ async function handleSlashCommand(interaction: any) {
       if (!hasPermission) {
         await interaction.reply({
           content: '❌ You don\'t have permission to use this command!',
-          ephemeral: true
+          flags: MessageFlags.Ephemeral
         });
         return;
       }
@@ -84,7 +85,7 @@ async function handleSlashCommand(interaction: any) {
         const timeLeft = (expirationTime - now) / 1000;
         await interaction.reply({
           content: `⏰ Please wait ${timeLeft.toFixed(1)} seconds before using this command again.`,
-          ephemeral: true
+          flags: MessageFlags.Ephemeral
         });
         return;
       }
@@ -103,7 +104,7 @@ async function handleSlashCommand(interaction: any) {
     
     const errorMessage = {
       content: '❌ There was an error executing this command!',
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     };
 
     if (interaction.replied || interaction.deferred) {
@@ -126,7 +127,7 @@ async function handleButtonInteraction(interaction: any) {
       logger.error(`Error showing ticket modal: ${error}`);
       await interaction.reply({
         content: '❌ Failed to open ticket creation form. Please try again.',
-        ephemeral: true
+        flags: MessageFlags.Ephemeral
       });
     }
     return;
@@ -154,7 +155,7 @@ async function handleButtonInteraction(interaction: any) {
       if (!interaction.replied && !interaction.deferred) {
         await interaction.reply({
           content: '❌ An error occurred while processing your request.',
-          ephemeral: true
+          flags: MessageFlags.Ephemeral
         });
       }
     }
@@ -172,7 +173,7 @@ async function handleButtonInteraction(interaction: any) {
       if (!interaction.replied) {
         await interaction.reply({
           content: '❌ Failed to update priority.',
-          ephemeral: true
+          flags: MessageFlags.Ephemeral
         });
       }
     }
@@ -206,7 +207,7 @@ async function handleTicketCreationModal(interaction: any) {
     if (!ticketChannel || ticketChannel.type !== ChannelType.GuildText) {
       await interaction.reply({
         content: '❌ Ticket channel not found or is not a text channel!',
-        ephemeral: true
+        flags: MessageFlags.Ephemeral
       });
       return;
     }
@@ -220,7 +221,7 @@ async function handleTicketCreationModal(interaction: any) {
     if (userHasTicket) {
       await interaction.reply({
         content: '❌ You already have an open ticket! Please close your existing ticket before creating a new one.',
-        ephemeral: true
+        flags: MessageFlags.Ephemeral
       });
       return;
     }
@@ -284,14 +285,14 @@ async function handleTicketCreationModal(interaction: any) {
     // Reply to the user
     await interaction.reply({
       content: `✅ Your ticket **${ticketId}** has been created! Please check ${thread} for updates.`,
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
     
   } catch (error) {
     console.error('Error creating ticket from modal:', error);
     await interaction.reply({
       content: '❌ There was an error creating your ticket. Please try again later.',
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
   }
 }
@@ -301,7 +302,7 @@ async function handleTicketClaim(interaction: any, ticketId: string) {
   if (!interaction.member?.permissions.has(PermissionFlagsBits.ManageThreads)) {
     await interaction.reply({
       content: '❌ You need the "Manage Threads" permission to claim tickets.',
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
     return;
   }
@@ -312,7 +313,7 @@ async function handleTicketClaim(interaction: any, ticketId: string) {
   if (!channel || !channel.isThread()) {
     await interaction.reply({
       content: '❌ This command can only be used in ticket threads.',
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
     return;
   }
@@ -346,7 +347,7 @@ async function handleTicketClose(interaction: any, ticketId: string) {
   if (!channel || !channel.isThread()) {
     await interaction.reply({
       content: '❌ This command can only be used in ticket threads.',
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
     return;
   }
@@ -362,7 +363,7 @@ async function handleTicketClose(interaction: any, ticketId: string) {
     if (!hasPermission && !isCreator) {
       await interaction.reply({
         content: '❌ You can only close your own tickets or need "Manage Threads" permission.',
-        ephemeral: true
+        flags: MessageFlags.Ephemeral
       });
       return;
     }
@@ -392,46 +393,81 @@ async function handleTicketClose(interaction: any, ticketId: string) {
         msg.author.id === interaction.client.user.id &&
         msg.embeds.length > 0 && 
         msg.embeds[0].title?.includes('Support Ticket') &&
-        msg.components.length > 0
+        msg.components && msg.components.length > 0
       );
       
-      if (ticketMessage) {
+      if (ticketMessage && ticketMessage.editable) {
         await ticketMessage.edit({
           embeds: ticketMessage.embeds,
           components: [] // Remove all buttons
         });
         logger.info(`Removed buttons from ticket ${ticketId} message`);
+      } else {
+        logger.warn(`Could not find editable ticket message for ticket ${ticketId}`);
       }
-    } catch (editError) {
-      logger.warn(`Could not edit original ticket message: ${editError}`);
-      // Don't throw here, continue with closing
+    } catch (editError: any) {
+      // Log the specific error but don't fail the close operation
+      if (editError.code === 10008) {
+        logger.warn(`Original ticket message not found for ticket ${ticketId} (already deleted or moved)`);
+      } else {
+        logger.warn(`Could not edit original ticket message for ticket ${ticketId}: ${editError.message}`);
+      }
     }
     
     // Update thread name and archive after a delay
     setTimeout(async () => {
       try {
+        // Update thread name to show it's closed
         const closedName = thread.name.replace(/[🎫🔧🟢🟡🟠🔴]/, '🔒');
-        await thread.setName(closedName);
-        await thread.setLocked(true);
-        await thread.setArchived(true);
+        if (thread.name !== closedName) {
+          await thread.setName(closedName);
+        }
+        
+        // Lock and archive the thread
+        if (!thread.locked) {
+          await thread.setLocked(true);
+        }
+        
+        if (!thread.archived) {
+          await thread.setArchived(true);
+        }
+        
         logger.info(`Ticket ${ticketId} closed and archived by ${interaction.user.tag}`);
-      } catch (archiveError) {
-        logger.error(`Error archiving ticket ${ticketId}: ${archiveError}`);
+      } catch (archiveError: any) {
+        logger.error(`Error archiving ticket ${ticketId}: ${archiveError.message}`);
+        
+        // If we can't archive, at least try to update the name
+        try {
+          if (!thread.archived) {
+            const closedName = thread.name.replace(/[🎫🔧🟢🟡🟠🔴]/, '🔒');
+            if (thread.name !== closedName) {
+              await thread.setName(closedName);
+            }
+          }
+        } catch (nameError: any) {
+          logger.error(`Error updating ticket ${ticketId} name: ${nameError.message}`);
+        }
       }
     }, 3000); // 3 second delay
     
-  } catch (error) {
-    logger.error(`Error in handleTicketClose: ${error}`);
+  } catch (error: any) {
+    logger.error(`Error in handleTicketClose for ticket ${ticketId}: ${error.message}`);
     
-    if (!interaction.replied && !interaction.deferred) {
-      await interaction.reply({
-        content: '❌ Failed to close ticket. Please try again.',
-        ephemeral: true
-      });
-    } else if (interaction.deferred) {
-      await interaction.editReply({
-        content: '❌ Failed to close ticket. Please try again.'
-      });
+    const errorContent = '❌ Failed to close ticket. Please try again.';
+    
+    try {
+      if (!interaction.replied && !interaction.deferred) {
+        await interaction.reply({
+          content: errorContent,
+          flags: MessageFlags.Ephemeral
+        });
+      } else if (interaction.deferred) {
+        await interaction.editReply({
+          content: errorContent
+        });
+      }
+    } catch (replyError: any) {
+      logger.error(`Error sending error message for ticket ${ticketId}: ${replyError.message}`);
     }
   }
 }
@@ -441,7 +477,7 @@ async function handlePriorityChange(interaction: any, ticketId: string) {
   if (!interaction.member?.permissions.has(PermissionFlagsBits.ManageThreads)) {
     await interaction.reply({
       content: '❌ You need the "Manage Threads" permission to change ticket priority.',
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
     return;
   }
@@ -470,7 +506,7 @@ async function handlePriorityChange(interaction: any, ticketId: string) {
   await interaction.reply({
     content: '⚡ Select the new priority level:',
     components: [priorityRow],
-    ephemeral: true
+    flags: MessageFlags.Ephemeral
   });
 }
 
@@ -481,7 +517,7 @@ async function handlePrioritySet(interaction: any, priority: string, ticketId: s
   if (!channel || !channel.isThread()) {
     await interaction.reply({
       content: '❌ This command can only be used in ticket threads.',
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
     return;
   }
