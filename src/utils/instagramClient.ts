@@ -58,41 +58,42 @@ export async function getInstagramProfile(username: string): Promise<InstagramPr
       }
     });
 
-    if (!profileData) {
-      // Fallback: try to extract from window._sharedData
-      const sharedDataMatch = response.data.match(/window\._sharedData = ({.*?});/);
-      if (sharedDataMatch) {
-        const sharedData = JSON.parse(sharedDataMatch[1]);
-        const userInfo = sharedData?.entry_data?.ProfilePage?.[0]?.graphql?.user;
-        
-        if (userInfo) {
-          return {
-            username: userInfo.username,
-            fullName: userInfo.full_name || '',
-            biography: userInfo.biography || '',
-            profilePicUrl: userInfo.profile_pic_url || '',
-            postCount: userInfo.edge_owner_to_timeline_media?.count || 0,
-            followers: userInfo.edge_followed_by?.count || 0,
-            following: userInfo.edge_follow?.count || 0,
-            isVerified: userInfo.is_verified || false
-          };
-        }
-      }
-      
-      logger.warn(`Could not extract profile data for ${username}`);
-      return null;
+    if (profileData) {
+      return {
+        username,
+        fullName: profileData.name || '',
+        biography: profileData.description || '',
+        profilePicUrl: profileData.image || '',
+        postCount: 0, // Not available in LD+JSON
+        followers: 0, // Not available in LD+JSON
+        following: 0, // Not available in LD+JSON
+        isVerified: false // Not available in LD+JSON
+      };
     }
 
-    return {
-      username,
-      fullName: profileData.name || '',
-      biography: profileData.description || '',
-      profilePicUrl: profileData.image || '',
-      postCount: 0, // Not available in LD+JSON
-      followers: 0, // Not available in LD+JSON
-      following: 0, // Not available in LD+JSON
-      isVerified: false // Not available in LD+JSON
-    };
+    // Fallback: try to extract from window._sharedData
+    const sharedDataMatch = response.data.match(/window\._sharedData = ({.*?});/);
+    if (sharedDataMatch) {
+      const sharedData = JSON.parse(sharedDataMatch[1]);
+      const userInfo = sharedData?.entry_data?.ProfilePage?.[0]?.graphql?.user;
+      
+      if (userInfo) {
+        return {
+          username: userInfo.username,
+          fullName: userInfo.full_name || '',
+          biography: userInfo.biography || '',
+          profilePicUrl: userInfo.profile_pic_url || '',
+          postCount: userInfo.edge_owner_to_timeline_media?.count || 0,
+          followers: userInfo.edge_followed_by?.count || 0,
+          following: userInfo.edge_follow?.count || 0,
+          isVerified: userInfo.is_verified || false
+        };
+      }
+    }
+    
+    // If no data found, return null
+    logger.warn(`Could not extract profile data for ${username}`);
+    return null;
 
   } catch (error) {
     logger.error(`Error fetching Instagram profile for ${username}: ${error}`);
