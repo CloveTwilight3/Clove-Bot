@@ -1,6 +1,6 @@
 // src/services/socialMonitor.ts
 import { Client, EmbedBuilder, TextChannel } from 'discord.js';
-import { CronJob } from 'cron';
+import * as cron from 'node-cron';
 import Parser from 'rss-parser';
 import { 
   getMonitoredAccounts, 
@@ -13,7 +13,7 @@ import { logger } from '../utils/logger';
 
 export class SocialMonitorService {
   private client: Client;
-  private cronJobs: Map<string, CronJob> = new Map();
+  private cronJobs: Map<string, cron.ScheduledTask> = new Map();
 
   constructor(client: Client) {
     this.client = client;
@@ -21,25 +21,30 @@ export class SocialMonitorService {
 
   start(): void {
     // Monitor YouTube feeds every 5 minutes
-    const youtubeJob = new CronJob(
+    const youtubeJob = cron.schedule(
       `*/${process.env.RSS_CHECK_INTERVAL || 5} * * * *`, 
-      () => this.checkYouTubeAccounts(), 
-      null, true, 'UTC'
+      () => this.checkYouTubeAccounts(),
+      { scheduled: false }
     );
 
     // Monitor Bluesky every 3 minutes
-    const blueskyJob = new CronJob(
+    const blueskyJob = cron.schedule(
       `*/${process.env.BLUESKY_CHECK_INTERVAL || 3} * * * *`, 
-      () => this.checkBlueskyAccounts(), 
-      null, true, 'UTC'
+      () => this.checkBlueskyAccounts(),
+      { scheduled: false }
     );
 
     // Monitor Instagram every 10 minutes (to avoid rate limits)
-    const instagramJob = new CronJob(
+    const instagramJob = cron.schedule(
       `*/${process.env.INSTAGRAM_CHECK_INTERVAL || 10} * * * *`, 
-      () => this.checkInstagramAccounts(), 
-      null, true, 'UTC'
+      () => this.checkInstagramAccounts(),
+      { scheduled: false }
     );
+
+    // Start the jobs
+    youtubeJob.start();
+    blueskyJob.start();
+    instagramJob.start();
 
     this.cronJobs.set('youtube', youtubeJob);
     this.cronJobs.set('bluesky', blueskyJob);

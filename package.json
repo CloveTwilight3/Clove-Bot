@@ -25,9 +25,7 @@
     "@atproto/api": "^0.6.23",
     "node-cron": "^3.0.3",
     "cheerio": "^1.0.0",
-    "axios": "^1.6.0",
-    "instagram-web-api": "^2.2.2",
-    "puppeteer": "^21.0.0"
+    "axios": "^1.6.0"
   },
   "devDependencies": {
     "@types/node": "^20.14.2",

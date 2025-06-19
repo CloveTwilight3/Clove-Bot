@@ -41,7 +41,7 @@ export async function getInstagramProfile(username: string): Promise<InstagramPr
     
     // Extract JSON data from script tag
     const scriptTags = $('script[type="application/ld+json"]');
-    let profileData = null;
+    let profileData: any = null;
     
     scriptTags.each((i, elem) => {
       try {
@@ -79,7 +79,8 @@ export async function getInstagramProfile(username: string): Promise<InstagramPr
         }
       }
       
-      throw new Error('Could not extract profile data');
+      logger.warn(`Could not extract profile data for ${username}`);
+      return null;
     }
 
     return {
@@ -113,7 +114,8 @@ export async function getInstagramPosts(username: string, limit: number = 12): P
     // Try to extract posts from window._sharedData
     const sharedDataMatch = response.data.match(/window\._sharedData = ({.*?});/);
     if (!sharedDataMatch) {
-      throw new Error('Could not find shared data');
+      logger.warn(`Could not find shared data for ${username}`);
+      return [];
     }
 
     const sharedData = JSON.parse(sharedDataMatch[1]);
