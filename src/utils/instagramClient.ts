@@ -43,21 +43,24 @@ export async function getInstagramProfile(username: string): Promise<InstagramPr
     const scriptTags = $('script[type="application/ld+json"]');
     let profileData: any = null;
     
-    scriptTags.each((i, elem) => {
+    // Use a traditional for loop instead of each to avoid return path issues
+    for (let i = 0; i < scriptTags.length; i++) {
       try {
-        const content = $(elem).html();
+        const content = $(scriptTags[i]).html();
         if (content) {
           const data = JSON.parse(content);
           if (data['@type'] === 'Person' || data.mainEntityofPage) {
             profileData = data;
-            return false; // break loop
+            break;
           }
         }
       } catch (e) {
         // Continue to next script tag
+        continue;
       }
-    });
+    }
 
+    // If we found profile data from LD+JSON
     if (profileData) {
       return {
         username,
@@ -74,24 +77,28 @@ export async function getInstagramProfile(username: string): Promise<InstagramPr
     // Fallback: try to extract from window._sharedData
     const sharedDataMatch = response.data.match(/window\._sharedData = ({.*?});/);
     if (sharedDataMatch) {
-      const sharedData = JSON.parse(sharedDataMatch[1]);
-      const userInfo = sharedData?.entry_data?.ProfilePage?.[0]?.graphql?.user;
-      
-      if (userInfo) {
-        return {
-          username: userInfo.username,
-          fullName: userInfo.full_name || '',
-          biography: userInfo.biography || '',
-          profilePicUrl: userInfo.profile_pic_url || '',
-          postCount: userInfo.edge_owner_to_timeline_media?.count || 0,
-          followers: userInfo.edge_followed_by?.count || 0,
-          following: userInfo.edge_follow?.count || 0,
-          isVerified: userInfo.is_verified || false
-        };
+      try {
+        const sharedData = JSON.parse(sharedDataMatch[1]);
+        const userInfo = sharedData?.entry_data?.ProfilePage?.[0]?.graphql?.user;
+        
+        if (userInfo) {
+          return {
+            username: userInfo.username,
+            fullName: userInfo.full_name || '',
+            biography: userInfo.biography || '',
+            profilePicUrl: userInfo.profile_pic_url || '',
+            postCount: userInfo.edge_owner_to_timeline_media?.count || 0,
+            followers: userInfo.edge_followed_by?.count || 0,
+            following: userInfo.edge_follow?.count || 0,
+            isVerified: userInfo.is_verified || false
+          };
+        }
+      } catch (parseError) {
+        logger.error(`Error parsing shared data for ${username}: ${parseError}`);
       }
     }
     
-    // If no data found, return null
+    // If no data found anywhere
     logger.warn(`Could not extract profile data for ${username}`);
     return null;
 
@@ -119,22 +126,27 @@ export async function getInstagramPosts(username: string, limit: number = 12): P
       return [];
     }
 
-    const sharedData = JSON.parse(sharedDataMatch[1]);
-    const posts = sharedData?.entry_data?.ProfilePage?.[0]?.graphql?.user?.edge_owner_to_timeline_media?.edges || [];
+    try {
+      const sharedData = JSON.parse(sharedDataMatch[1]);
+      const posts = sharedData?.entry_data?.ProfilePage?.[0]?.graphql?.user?.edge_owner_to_timeline_media?.edges || [];
 
-    return posts.slice(0, limit).map((edge: any) => {
-      const node = edge.node;
-      return {
-        id: node.id,
-        shortcode: node.shortcode,
-        caption: node.edge_media_to_caption?.edges?.[0]?.node?.text || '',
-        imageUrl: node.display_url || node.thumbnail_src,
-        timestamp: new Date(node.taken_at_timestamp * 1000).toISOString(),
-        likes: node.edge_liked_by?.count || 0,
-        comments: node.edge_media_to_comment?.count || 0,
-        url: `https://www.instagram.com/p/${node.shortcode}/`
-      };
-    });
+      return posts.slice(0, limit).map((edge: any) => {
+        const node = edge.node;
+        return {
+          id: node.id,
+          shortcode: node.shortcode,
+          caption: node.edge_media_to_caption?.edges?.[0]?.node?.text || '',
+          imageUrl: node.display_url || node.thumbnail_src,
+          timestamp: new Date(node.taken_at_timestamp * 1000).toISOString(),
+          likes: node.edge_liked_by?.count || 0,
+          comments: node.edge_media_to_comment?.count || 0,
+          url: `https://www.instagram.com/p/${node.shortcode}/`
+        };
+      });
+    } catch (parseError) {
+      logger.error(`Error parsing posts data for ${username}: ${parseError}`);
+      return [];
+    }
 
   } catch (error) {
     logger.error(`Error fetching Instagram posts for ${username}: ${error}`);
