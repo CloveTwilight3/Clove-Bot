@@ -7,6 +7,8 @@ import { loadCommands } from './handlers/commandHandler';
 import { loadEvents } from './handlers/eventHandler';
 import { Command } from './interfaces/Command';
 import { REST, Routes } from 'discord.js';
+import { SocialMonitorService } from './services/socialMonitor';
+import { initializeBlueskyClient } from './utils/blueskyClient';
 
 // Load environment variables
 config();
@@ -28,6 +30,9 @@ const client = new Client({
 
 // Initialize commands collection
 client.commands = new Collection();
+
+// Initialize services
+let socialMonitor: SocialMonitorService;
 
 // Deploy commands function
 async function deployCommands(commands: Collection<string, Command>) {
@@ -77,8 +82,18 @@ async function initializeBot() {
     // Load events
     loadEvents(client);
     
+    // Initialize Bluesky client (optional)
+    await initializeBlueskyClient();
+    
     // Login to Discord
     await client.login(process.env.DISCORD_TOKEN);
+    
+    // Start social media monitoring after client is ready
+    client.once('ready', () => {
+      socialMonitor = new SocialMonitorService(client);
+      socialMonitor.start();
+      logger.info('🎯 Social media monitoring started');
+    });
     
   } catch (error) {
     logger.error(`Failed to initialize bot: ${error}`);
@@ -100,6 +115,11 @@ process.on('uncaughtException', (error) => {
 // Graceful shutdown
 process.on('SIGINT', () => {
   logger.info('Received SIGINT, shutting down gracefully...');
+  
+  if (socialMonitor) {
+    socialMonitor.stop();
+  }
+  
   client.destroy();
   process.exit(0);
 });
