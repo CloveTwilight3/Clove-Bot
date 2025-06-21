@@ -1,4 +1,4 @@
-// src/services/socialMonitor.ts
+// src/services/socialMonitor.ts - Updated version
 import { Client, EmbedBuilder, TextChannel } from 'discord.js';
 import * as cron from 'node-cron';
 import Parser from 'rss-parser';
@@ -14,6 +14,7 @@ import { logger } from '../utils/logger';
 export class SocialMonitorService {
   private client: Client;
   private cronJobs: Map<string, cron.ScheduledTask> = new Map();
+  private lastCheckedPosts: Map<string, string> = new Map(); // Track last posts per account
 
   constructor(client: Client) {
     this.client = client;
@@ -67,6 +68,8 @@ export class SocialMonitorService {
       
       for (const account of youtubeAccounts) {
         await this.checkYouTubeAccount(account);
+        // Add delay between accounts to avoid rate limiting
+        await new Promise(resolve => setTimeout(resolve, 2000));
       }
     } catch (error) {
       logger.error(`Error checking YouTube accounts: ${error}`);
@@ -83,6 +86,8 @@ export class SocialMonitorService {
       
       for (const account of blueskyAccounts) {
         await this.checkBlueskyAccount(account);
+        // Add delay between accounts to avoid rate limiting
+        await new Promise(resolve => setTimeout(resolve, 1000));
       }
     } catch (error) {
       logger.error(`Error checking Bluesky accounts: ${error}`);
@@ -95,6 +100,8 @@ export class SocialMonitorService {
       
       for (const account of instagramAccounts) {
         await this.checkInstagramAccount(account);
+        // Add delay between accounts to avoid rate limiting
+        await new Promise(resolve => setTimeout(resolve, 3000));
       }
     } catch (error) {
       logger.error(`Error checking Instagram accounts: ${error}`);
@@ -104,34 +111,66 @@ export class SocialMonitorService {
   private async checkYouTubeAccount(account: MonitoredAccount): Promise<void> {
     try {
       if (!account.rssUrl) {
-        logger.error(`No RSS URL for YouTube account: ${account.displayName}`);
-        return;
+        account.rssUrl = `https://www.youtube.com/feeds/videos.xml?channel_id=${account.identifier}`;
       }
 
       const parser = new Parser({
-        timeout: 10000,
+        timeout: 15000, // Increased timeout
         customFields: {
-          item: ['media:thumbnail', 'yt:videoId', 'yt:channelId']
+          item: ['media:thumbnail', 'yt:videoId', 'yt:channelId', 'published']
         }
       });
 
+      logger.info(`Checking YouTube account: ${account.displayName}`);
       const feed = await parser.parseURL(account.rssUrl);
+      
+      if (!feed.items || feed.items.length === 0) {
+        logger.warn(`No videos found for ${account.displayName}`);
+        return;
+      }
+
       const latestVideo = feed.items[0];
+      const videoId = latestVideo['yt:videoId'] || latestVideo.guid;
 
-      if (!latestVideo) {
+      if (!videoId) {
+        logger.warn(`No video ID found for latest video from ${account.displayName}`);
         return;
       }
 
-      // Check if this is a new video
-      if (account.lastPostId && latestVideo.guid === account.lastPostId) {
+      // Use in-memory tracking for immediate duplicates + persistent storage
+      const memoryKey = `${account.id}_${videoId}`;
+      if (this.lastCheckedPosts.has(memoryKey)) {
+        logger.debug(`Already processed video ${videoId} for ${account.displayName} (memory check)`);
         return;
       }
 
+      // Check against stored last post ID
+      if (account.lastPostId === videoId) {
+        logger.debug(`Already processed video ${videoId} for ${account.displayName} (storage check)`);
+        this.lastCheckedPosts.set(memoryKey, videoId);
+        return;
+      }
+
+      // Check video age (don't announce videos older than 1 hour)
+      const videoDate = new Date(latestVideo.pubDate || latestVideo.published);
+      const oneHourAgo = new Date(Date.now() - (60 * 60 * 1000));
+      
+      if (videoDate < oneHourAgo && !account.lastPostId) {
+        // This is likely an old video on first run
+        logger.info(`Skipping old video from ${account.displayName}: ${latestVideo.title}`);
+        updateAccountLastChecked(account.id, videoId);
+        this.lastCheckedPosts.set(memoryKey, videoId);
+        return;
+      }
+
+      logger.info(`New video detected from ${account.displayName}: ${latestVideo.title}`);
+      
       // Announce the new video
       await this.announceYouTubeVideo(account, latestVideo);
       
-      // Update last checked
-      updateAccountLastChecked(account.id, latestVideo.guid);
+      // Update tracking
+      updateAccountLastChecked(account.id, videoId);
+      this.lastCheckedPosts.set(memoryKey, videoId);
 
     } catch (error) {
       logger.error(`Error checking YouTube account ${account.displayName}: ${error}`);
@@ -149,16 +188,34 @@ export class SocialMonitorService {
       const latestPost = posts[0];
       const postId = latestPost.post.uri;
 
+      // Use in-memory tracking for immediate duplicates
+      const memoryKey = `${account.id}_${postId}`;
+      if (this.lastCheckedPosts.has(memoryKey)) {
+        return;
+      }
+
       // Check if this is a new post
       if (account.lastPostId && postId === account.lastPostId) {
+        this.lastCheckedPosts.set(memoryKey, postId);
+        return;
+      }
+
+      // Check post age (don't announce posts older than 1 hour on first run)
+      const postDate = new Date(latestPost.post.record.createdAt);
+      const oneHourAgo = new Date(Date.now() - (60 * 60 * 1000));
+      
+      if (postDate < oneHourAgo && !account.lastPostId) {
+        updateAccountLastChecked(account.id, postId);
+        this.lastCheckedPosts.set(memoryKey, postId);
         return;
       }
 
       // Announce the new post
       await this.announceBlueskyPost(account, latestPost);
       
-      // Update last checked
+      // Update tracking
       updateAccountLastChecked(account.id, postId);
+      this.lastCheckedPosts.set(memoryKey, postId);
 
     } catch (error) {
       logger.error(`Error checking Bluesky account ${account.displayName}: ${error}`);
@@ -175,16 +232,34 @@ export class SocialMonitorService {
 
       const latestPost = posts[0];
 
+      // Use in-memory tracking for immediate duplicates
+      const memoryKey = `${account.id}_${latestPost.id}`;
+      if (this.lastCheckedPosts.has(memoryKey)) {
+        return;
+      }
+
       // Check if this is a new post
       if (account.lastPostId && latestPost.id === account.lastPostId) {
+        this.lastCheckedPosts.set(memoryKey, latestPost.id);
+        return;
+      }
+
+      // Check post age (don't announce posts older than 1 hour on first run)
+      const postDate = new Date(latestPost.timestamp);
+      const oneHourAgo = new Date(Date.now() - (60 * 60 * 1000));
+      
+      if (postDate < oneHourAgo && !account.lastPostId) {
+        updateAccountLastChecked(account.id, latestPost.id);
+        this.lastCheckedPosts.set(memoryKey, latestPost.id);
         return;
       }
 
       // Announce the new post
       await this.announceInstagramPost(account, latestPost);
       
-      // Update last checked
+      // Update tracking
       updateAccountLastChecked(account.id, latestPost.id);
+      this.lastCheckedPosts.set(memoryKey, latestPost.id);
 
     } catch (error) {
       logger.error(`Error checking Instagram account ${account.displayName}: ${error}`);
@@ -194,10 +269,16 @@ export class SocialMonitorService {
   private async announceYouTubeVideo(account: MonitoredAccount, video: any): Promise<void> {
     try {
       const channelId = process.env.YOUTUBE_CHANNEL_ID;
-      if (!channelId) return;
+      if (!channelId) {
+        logger.warn('YOUTUBE_CHANNEL_ID not set in environment variables');
+        return;
+      }
 
       const channel = await this.client.channels.fetch(channelId) as TextChannel;
-      if (!channel?.isTextBased()) return;
+      if (!channel?.isTextBased()) {
+        logger.error('YouTube announcement channel not found or not a text channel');
+        return;
+      }
 
       const thumbnail = video['yt:videoId'] ? 
         `https://img.youtube.com/vi/${video['yt:videoId']}/maxresdefault.jpg` : 
@@ -224,7 +305,15 @@ export class SocialMonitorService {
         content += ` <@&${process.env.NOTIFICATION_ROLE_ID}>`;
       }
 
-      await channel.send({ content, embeds: [embed] });
+      // Use allowedMentions to ensure role pings work
+      await channel.send({ 
+        content, 
+        embeds: [embed],
+        allowedMentions: {
+          roles: process.env.NOTIFICATION_ROLE_ID ? [process.env.NOTIFICATION_ROLE_ID] : []
+        }
+      });
+      
       logger.info(`Announced YouTube video from ${account.displayName}: ${video.title}`);
 
     } catch (error) {
@@ -263,7 +352,14 @@ export class SocialMonitorService {
         content += ` <@&${process.env.NOTIFICATION_ROLE_ID}>`;
       }
 
-      await channel.send({ content, embeds: [embed] });
+      await channel.send({ 
+        content, 
+        embeds: [embed],
+        allowedMentions: {
+          roles: process.env.NOTIFICATION_ROLE_ID ? [process.env.NOTIFICATION_ROLE_ID] : []
+        }
+      });
+      
       logger.info(`Announced Bluesky post from ${account.displayName}`);
 
     } catch (error) {
@@ -299,7 +395,14 @@ export class SocialMonitorService {
         content += ` <@&${process.env.NOTIFICATION_ROLE_ID}>`;
       }
 
-      await channel.send({ content, embeds: [embed] });
+      await channel.send({ 
+        content, 
+        embeds: [embed],
+        allowedMentions: {
+          roles: process.env.NOTIFICATION_ROLE_ID ? [process.env.NOTIFICATION_ROLE_ID] : []
+        }
+      });
+      
       logger.info(`Announced Instagram post from ${account.displayName}`);
 
     } catch (error) {
