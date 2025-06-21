@@ -2,7 +2,7 @@ import { Events, GuildMember, EmbedBuilder } from 'discord.js';
 import { logger } from '../utils/logger';
 
 // Hardcoded role ID - replace with your desired role ID
-const AUTO_ROLE_ID = '1385035554898575513'; // Replace this with your role ID
+const AUTO_ROLE_ID = '1385978484190351430'; // Replace this with your role ID
 
 // Optional: Welcome channel ID
 const WELCOME_CHANNEL_ID = '1384662948571517011'; // Replace with your welcome channel ID (or use null to disable)
