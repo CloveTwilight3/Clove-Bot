@@ -1,4 +1,4 @@
-// src/commands/admin/pride-events.ts
+// src/commands/admin/pride-events.ts - Fixed version
 import { 
   SlashCommandBuilder, 
   ChatInputCommandInteraction, 
@@ -153,9 +153,9 @@ async function handleAddEvent(interaction: ChatInputCommandInteraction) {
   const dateString = interaction.options.getString('date', true);
   const description = interaction.options.getString('description', true);
   const tagsString = interaction.options.getString('tags') || 'general';
-  const location = interaction.options.getString('location');
-  const organizer = interaction.options.getString('organizer');
-  const url = interaction.options.getString('url');
+  const location = interaction.options.getString('location') || undefined; // Fix: handle null
+  const organizer = interaction.options.getString('organizer') || undefined; // Fix: handle null
+  const url = interaction.options.getString('url') || undefined; // Fix: handle null
   const isRecurring = interaction.options.getBoolean('recurring') || false;
   
   // Parse date
