@@ -9,6 +9,7 @@ import { Command } from './interfaces/Command';
 import { REST, Routes } from 'discord.js';
 import { SocialMonitorService } from './services/socialMonitor';
 import { initializeBlueskyClient } from './utils/blueskyClient';
+import { PrideEventService } from './services/prideEventService';
 
 // Load environment variables
 config();
@@ -37,6 +38,7 @@ client.commands = new Collection();
 
 // Initialize services
 let socialMonitor: SocialMonitorService;
+let prideEventService: PrideEventService;
 
 // Deploy commands function
 async function deployCommands(commands: Collection<string, Command>) {
@@ -96,6 +98,19 @@ async function initializeBot() {
     client.once('ready', () => {
       logger.info(`✅ ${client.user!.tag} is online and ready!`);
       logger.info(`📊 Serving ${client.guilds.cache.size} servers`);
+
+      prideEventService = new PrideEventService(client);
+      prideEventService.start();
+      logger.info('🏳️‍🌈 Pride event monitoring started');
+
+      if (process.env.PRIDE_CHANNEL_ID) {
+        logger.info(`🏳️‍🌈 Pride announcements: Channel ${process.env.PRIDE_CHANNEL_ID}`);
+      }
+      if (process.env.PRIDE_ROLE_ID) {
+        logger.info(`🏳️‍🌈 Pride notification role: ${process.env.PRIDE_ROLE_ID}`);
+      } else {
+        logger.warn('⚠️ PRIDE_ROLE_ID not set - pride role pings disabled');
+      }
       
       // Set bot status
       client.user!.setActivity('with the Protocol', { 
@@ -194,6 +209,13 @@ async function gracefulShutdown() {
       logger.info('Stopping social media monitoring...');
       socialMonitor.stop();
       logger.info('Social monitoring stopped');
+    }
+
+    // Stop pride event monitoring
+    if (prideEventService) {
+      logger.info('Stopping pride event monitoring...');
+      prideEventService.stop();
+      logger.info('Pride event monitoring stopped');
     }
     
     // Update bot status to indicate shutdown

@@ -31,7 +31,12 @@ const command: Command = {
         { name: '/untimeout', value: 'Remove timeout (Moderator only)', inline: true },
         { name: '/purge', value: 'Delete multiple messages (Moderator only)', inline: true },
         { name: '/tickets', value: 'Manage support tickets (Moderator only)', inline: true },
-        { name: '/ticket-admin', value: 'Manage ticket numbering system (Admin only)', inline: true }
+        { name: '/ticket-admin', value: 'Manage ticket numbering system (Admin only)', inline: true },
+        { name: '**Pride Events**', value: '\u200b', inline: false },
+        { name: '/pride upcoming', value: 'Show upcoming pride events', inline: true },
+        { name: '/pride search', value: 'Search events by identity tag', inline: true },
+        { name: '/pride flags', value: 'Show all pride flag colors', inline: true },
+        { name: '/pride-events', value: 'Manage pride events (Admin only)', inline: true }
       )
       .setColor('#0099ff')
       .setTimestamp()
